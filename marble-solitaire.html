@@ -1,0 +1,285 @@
+<html>
+<head>
+<script src="https://code.jquery.com/jquery-3.4.0.min.js"
+    integrity="sha256-BJeo0qm959uMBGb65z40ejJYGSgR7REI4+CW1fNKwOg="crossorigin="anonymous">
+</script><style media="screen"type="text/css">
+    td{
+    width:40px;
+    height:40px;
+    }
+    .circle{
+    display:block;
+    width:30px;
+    height:30px;
+    margin:0auto;
+    border-radius:50%;
+    }
+    .num-input{
+    width:30px;
+    border-radius:20%;
+    }
+</style>
+<title>Marble Solitaire</title>
+</head>
+<body style="font-family: Helvetica, sans-serif">
+    Arm thickness:<input id="arm"type="text"class="num-input">
+<button id="new-game"style="border-radius:5px">New Game</button>
+<table id="board"border="0"></table>
+<div style="display:none"id="score-disp">Score:<span id="score"></span></div>
+<div id="msg"></div>
+<script>
+var slotTpl='<div class="circle" style="%%%"/>'; // html snippet for PEG/EMPTY
+// an "enum" representing slot values. PEG and EMPTY have styles.
+    var Slot={
+    PEG:1,
+    EMPTY:2,
+    INVALID:3,
+    prop:{
+    1:{style:"background-color:#4b5bb3;box-shadow: inset -5px -5px 5px rgba(0,0,0,.5);"},
+    2:{style:"background-color:white;box-shadow: inset 4px 4px 5px rgba(0,0,0,.5);"}
+    }
+    };
+
+class MarbleSolitaireView {
+
+  // set up the html table and score display
+  constructor(dim) {
+    if (dim <= 0) {
+      throw "Board side dimension must be positive";
+    }
+    this.boardSide = dim;
+    var tmpHtml = '';
+    for (var r = 0; r < dim; r++) {
+      tmpHtml += '<tr id="' + r + '">';
+      for (var c = 0; c < dim; c++) {
+        tmpHtml += '<td id="' + r + '-' + c + '"></td>';
+      }
+      tmpHtml += '</tr>';
+    }
+    $('#board').html(tmpHtml);
+    $('#score-disp').show();
+  }
+
+  // take a 2d array board, display it in the table; display given score
+  renderBoard(board, score) {
+    if (board.length != this.boardSide) {
+      throw "Invalid board dimension: " + board.length;
+    }
+    for (var r = 0; r < board.length; r++) {
+      if (board[r].length != this.boardSide) {
+        throw "Invalid board dimension: " + board[r].length;
+      }
+      for (var c = 0; c < board[r].length; c++) {
+        if (board[r][c] === Slot.PEG || board[r][c] === Slot.EMPTY) {
+          $('#' + r + '-' + c).html(slotTpl.replace( /%%%/, Slot.prop[board[r][c]].style));
+        }
+      }
+    }
+    $('#score').html(score);
+  }
+
+  // display a message below the board
+  setMessage(msg) {
+    $('#msg').html(msg);
+  }
+
+  // "highlight" a cell: change its background color to the given color.
+  // cells are 0-indexed from upper left to lower right
+  highlightCell(r, c, color) {
+    if (r < 0 || r >= this.boardSide || c < 0 || c >= this.boardSide) {
+      throw "Invalid cell position: " + r + "," + c;
+    }
+    $('#' + r + '-' + c).css('background-color', color);
+  }
+
+  // add a function to be executed when a cell is clicked. Function func must take
+  // two arguments, row and col (0-based indices, upper left to lower right)
+  addCellClickListener(func) {
+    $('td').click(function(evt) {
+      var cell = $(evt.target).attr('id') || $(evt.target).parent('td').attr('id');
+      var[row, col] =cell.split('-');
+      func(+row, +col);
+    });
+  }
+}
+
+/*** Don't modify code above this line. Fill in your code BELOW this line. *****/
+
+class MarbleSolitaireController {
+
+  // constructs an instance of the MarbleSolitiareController 
+  // based on amodel m and a view v
+  constructor(m, v) {
+    var emptyFirst = true;
+    v.renderBoard(m.getBoard(), m.getScore());
+    var firstChoice = null;
+    v.setMessage("Click to select starting empty slot");
+    v.addCellClickListener(function(row, col) {
+
+      console.log(row, col);
+      if (emptyFirst) {
+        m.setState(row, col, Slot.EMPTY);
+        emptyFirst = false;
+        v.setMessage("Click two cells to make a move");
+        v.renderBoard(m.getBoard(), m.getScore());
+      } else if (!emptyFirst && firstChoice === null) {
+        firstChoice = {r:row, c:col};
+        v.highlightCell(row, col, 'red');
+        v.renderBoard(m.getBoard(), m.getScore());
+      } else if (!emptyFirst) {
+        if (m.goodMove(firstChoice.r, firstChoice.c, row, col)) {
+          m.move(firstChoice.r, firstChoice.c, row, col);
+          v.highlightCell(firstChoice.r, firstChoice.c, 'white');
+          v.setMessage("Click two cells to make a move");
+        } else {
+          v.setMessage("Invalid  move, try again");
+          v.highlightCell(firstChoice.r, firstChoice.c, 'white');
+        }
+
+        firstChoice = null;
+
+      }
+      if (m.isGameOver() === true) {
+        v.setMessage("Game over!");
+      }
+
+      v.renderBoard(m.getBoard(), m.getScore());
+
+    }.bind(this));
+  }
+}
+
+  var midcell, board;
+
+// represents the MarbleSolitaireModel 
+class MarbleSolitaireModel {
+
+  // constructs an instance of MarbleSolitaireModel with a given arm length
+  // throws error if the armlength is even or not positive
+  constructor(armLength) {
+    if (armLength <= 0 && armLength % 2 !== 0) {
+      throw "Invalid arm length. Must be greater than 0, and odd";
+    } else {
+      this.armLength = armLength;
+      board = [...Array(((this.armLength * 3) - 2))].map(e => Array(((this.armLength * 3) - 2)));
+      this.buildGrid();
+    }
+
+  }
+
+  // return board width (e.g. 7 for armThickness 3)
+  getBoardSide() {
+    return ((this.armLength * 3) - 2);
+  }
+
+  // Builds the initial grid
+  buildGrid() {
+    for (var i = 0; i < board.length; i++) {
+      for (var j = 0; j < board.length; j++) {
+        if (this.checkBoundariesFalse(i, j)) {
+          board[i][j] = Slot.INVALID;
+        } else {
+          board[i][j] = Slot.PEG;
+        }
+
+      }
+    }
+  }
+
+  // checks whether the given position is in bounds of the board
+  checkBoundariesFalse(r, col) {
+    return ((r < this.armLength - 1 && col < this.armLength - 1) || // top left
+        (r < this.armLength - 1 && col > ((2 * this.armLength) - 2)) || // top right
+        (r > ((this.armLength * 2) - 2) && col < this.armLength - 1) || // bottom left
+        (r > ((this.armLength * 2) - 2) && col > ((2 * this.armLength) - 2)) || // bottom right
+        (r < 0 || r >= ((this.armLength * 3) - 2) || col >= ((this.armLength * 3) - 2) || col < 0));
+  }
+
+  // returns the board
+  getBoard() {
+    return board;
+  }
+
+  // sets the given board slot to the given state 
+  setState(r, c, s) {
+    board[r][c] = s;
+  }
+
+  // returns the score of the game
+  getScore() {
+    var score = 0;
+    for (var r = 0; r < board.length; r++) {
+      for (var l = 0; l < board.length; l++) {
+        if (board[r][l] === Slot.PEG) {
+          score++;
+        }
+      }
+    }
+    return score;
+  }
+
+  // determines whether the move is valid. If the user clicks a diagonal move, then the middle 
+  // slot cannot be evaluated so the try-catch catches the error. 
+  goodMove(fromRow, fromCol, toRow, toCol) {
+    try {
+      return ((board[fromRow][fromCol] === Slot.PEG)
+          && (board[fromRow + ((toRow - fromRow) / 2)][(fromCol + ((toCol - fromCol) / 2))]
+          === Slot.PEG)
+          && (board[toRow][toCol] === Slot.EMPTY)
+          && ((Math.abs(fromRow - toRow) === 2 && Math.abs(fromCol - toCol) === 0)
+          || (Math.abs(fromRow - toRow) === 0 && Math.abs(fromCol - toCol) === 2)));
+    } catch (e) {
+
+    }
+
+  }
+
+  // mutates the board for a move.
+  move(fromRow, fromCol, toRow, toCol) {
+    if (this.goodMove(fromRow, fromCol, toRow, toCol)) {
+      board[fromRow][fromCol] = Slot.EMPTY;
+      board[fromRow + (toRow - fromRow) / 2][(fromCol + (toCol - fromCol) / 2)] = Slot.EMPTY;
+      board[toRow][toCol] = Slot.PEG;
+      return true;
+    }
+  }
+
+  // returns a boolean representing whether or not the posn is valid
+  goodPosn(row, col) {
+    return !(this.checkBoundariesFalse(row, col));
+  }
+
+  // returns a boolean stating whether the game is over
+  isGameOver() {
+    for (var row = 0; row < board.length; row++) {
+      for (var col = 0; col < board[row].length; col++) {
+        if (row + 2 <= (this.armLength * 3) - 2 && this.goodMove(row, col, row + 2, col)) {
+          return false;
+        } else if (row - 2 >= 0 && this.goodMove(row, col, row - 2, col)) {
+          return false;
+        } else if (col + 2 <= (this.armLength * 3) - 2 && this.goodMove(row, col, row, col + 2)) {
+          return false;
+        } else if (col - 2 >= 0 && this.goodMove(row, col, row, col - 2)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+}
+
+  var model, view, ctrl;
+
+  $('#new-game').click(function(evt){
+    try{
+    model = new MarbleSolitaireModel($('#arm').val());
+    view = new MarbleSolitaireView(model.getBoardSide());
+    ctrl = new MarbleSolitaireController(model,view);
+    }catch(err){
+    alert(err);
+    }
+    });
+</script>
+</body>
+</html>
